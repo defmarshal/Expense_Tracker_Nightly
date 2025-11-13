@@ -1039,9 +1039,28 @@
         function renderAnalytics() {
             const categoryData = {};
             let totalSpending = 0;
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
-            // Analytics selalu memproses SEMUA data
-            expenses.forEach(expense => {
+            // 1. Get filtered expenses based on the selectedMonthYear
+            let filteredExpenses = expenses;
+            let titleText = 'All Time';
+
+            if (selectedMonthYear !== 'all') {
+                filteredExpenses = expenses.filter(exp => exp.date && exp.date.startsWith(selectedMonthYear));
+                const dateParts = selectedMonthYear.split('-');
+                const year = dateParts[0];
+                const monthIndex = parseInt(dateParts[1]) - 1;
+                titleText = `${monthNames[monthIndex]} ${year}`;
+            }
+            
+            // 2. Update the page title to reflect the filter
+            const analyticsTitle = document.querySelector('#analyticsPage h2');
+            if (analyticsTitle) {
+                analyticsTitle.textContent = `Spending by Category (${titleText})`;
+            }
+
+            // 3. Process the *filtered* expenses
+            filteredExpenses.forEach(expense => {
                 const cat = expense.category || 'Uncategorized';
                 
                 if (!categoryData[cat]) {
@@ -1065,7 +1084,8 @@
 
             // ... (Kode render Analytics lainnya tidak diubah)
             if (totalSpending === 0) {
-                document.getElementById('categoryBreakdown').innerHTML = '<div class="empty-state">No expenses to analyze yet. Add some expenses first!</div>';
+                const month = selectedMonthYear !== 'all' ? `for ${titleText}` : 'at all';
+                document.getElementById('categoryBreakdown').innerHTML = `<div class="empty-state">No expenses to analyze ${month}.</div>`;
                 const canvas = document.getElementById('categoryChart');
                 const ctx = canvas.getContext('2d');
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
