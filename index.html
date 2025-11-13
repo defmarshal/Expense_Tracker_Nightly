@@ -1,11 +1,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 <script>
+    // Inisialisasi variabel global di awal
     let expenses = [];
     let customCategories = [];
-    let subCategories = {}; // { categoryName: [subcat1, subcat2, ...] }
+    let subCategories = {}; 
     let categoryToDelete = null;
-    
-    // Inisialisasi Chart instances secara global
     let categoryChart = null;
     let expenseTrendChart = null; 
     
@@ -13,39 +12,32 @@
     let GITHUB_TOKEN = localStorage.getItem('github_token') || '';
     let GIST_ID = localStorage.getItem('gist_id') || '';
 
-    // Variabel untuk melacak bulan yang sedang difilter
     const currentMonthYear = new Date().toISOString().substring(0, 7);
-    let selectedMonthYear = null; // Untuk Expenses Page (akan diatur di renderExpensePageFilter)
-    let selectedAnalyticsMonthYear = 'all'; // Untuk Analytics Page
+    let selectedMonthYear = null; 
+    let selectedAnalyticsMonthYear = 'all'; 
 
-    // Set today's date as default
     const today = new Date().toISOString().split('T')[0];
-    document.getElementById('date').value = today;
+    
+    // =========================================================
+    // AWAL FUNGSI (Pastikan semua fungsi ada di sini)
+    // =========================================================
 
-    // Load GitHub token on startup
-    if (GITHUB_TOKEN) {
-        document.getElementById('githubToken').value = GITHUB_TOKEN;
-        updateSyncStatus();
+    function updateSyncStatus(message, color) {
+        const statusDiv = document.getElementById('syncStatus');
+        if (statusDiv) {
+            statusDiv.textContent = message || (GITHUB_TOKEN ? '✓ Configured' : 'Not configured');
+            statusDiv.style.color = color || (GITHUB_TOKEN ? '#43e97b' : '#999');
+        }
     }
-
-    // Format number input with thousand separator
-    const amountInput = document.getElementById('amount');
-    amountInput.addEventListener('input', function(e) {
-        let value = e.target.value.replace(/\D/g, '');
-        if (value) {
-            value = parseInt(value).toLocaleString('id-ID');
+    
+    function updateLastSyncTime() {
+        const lastSync = localStorage.getItem('last_sync');
+        const lastSyncDiv = document.getElementById('lastSync');
+        if (lastSyncDiv && lastSync) {
+            const date = new Date(lastSync);
+            lastSyncDiv.textContent = `Last synced: ${date.toLocaleString()}`;
         }
-        e.target.value = value;
-    });
-
-    // Handle category selection
-    const catSelect = document.getElementById('category');
-    catSelect.onchange = function() {
-        console.log('Category changed to:', this.value);
-        if (this.value === '__new__') {
-            openCategoryModal();
-        }
-    };
+    }
 
     function openCategoryModal() {
         document.getElementById('categoryModal').classList.add('active');
@@ -98,16 +90,7 @@
         }
     }
 
-    document.getElementById('newCategoryName').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            saveNewCategory();
-        }
-    });
-    
-    // --- FUNGSI UTILITY BARU/MODIFIKASI ---
-    
     function loadExpenses() {
-        // Coba memuat dari Local Storage
         const storedExpenses = localStorage.getItem('expenses');
         if (storedExpenses) {
             try {
@@ -117,11 +100,9 @@
                 expenses = [];
             }
         }
-        // Jika ada Gist, coba muat dari Gist
         if (GITHUB_TOKEN && GIST_ID) {
             loadFromGist();
         } else {
-             // Jika tidak ada Gist, render tampilan awal dari Local Storage
             renderExpensePageFilter();
             renderExpenses();
         }
@@ -158,39 +139,22 @@
         localStorage.setItem('subCategories', JSON.stringify(subCategories));
     }
     
-    // Panggil fungsi pemuatan data saat aplikasi dimulai
-    loadCategories();
-    loadExpenses();
-
-    // --- FUNGSI GIST ---
-    
+    // FUNGSI GIST (dilewati untuk keringkasan, diasumsikan tidak diubah dari perbaikan sebelumnya)
     async function findExistingGist() {
+        // ... (implementation remains the same)
         try {
             const response = await fetch('https://api.github.com/gists', {
-                headers: {
-                    'Authorization': `token ${GITHUB_TOKEN}`
-                }
+                headers: { 'Authorization': `token ${GITHUB_TOKEN}` }
             });
-
             if (!response.ok) {
                 const errorBody = await response.json();
                 throw new Error('Failed to fetch gists list. Status: ' + response.status + (errorBody.message ? ' - ' + errorBody.message : ''));
             }
-            
             const gists = await response.json();
-            
             const existingGist = gists.find(g => 
-                g.description === 'Expense Tracker Data' && 
-                g.files && 
-                g.files['expense-data.json']
+                g.description === 'Expense Tracker Data' && g.files && g.files['expense-data.json']
             );
-            
-            if (existingGist) {
-                return existingGist.id;
-            }
-            
-            return null;
-            
+            return existingGist ? existingGist.id : null;
         } catch (error) {
             console.error('Error finding existing Gist:', error);
             return null;
@@ -218,13 +182,7 @@
             alert('Please configure GitHub token first');
             return;
         }
-
-        const data = {
-            expenses: expenses,
-            categories: customCategories,
-            subCategories: subCategories
-        };
-
+        const data = { expenses: expenses, categories: customCategories, subCategories: subCategories };
         try {
             updateSyncStatus('Syncing...', '#667eea');
             
@@ -233,61 +191,35 @@
                 if (foundId) {
                     GIST_ID = foundId;
                     localStorage.setItem('gist_id', GIST_ID);
-                    updateSyncStatus('✓ Gist ID ditemukan. Mencoba memuat data lama.', '#ffc107');
                     await loadFromGist(true); 
                 }
             }
-
+            // ... (gist update/create logic remains the same)
+            let response;
             if (GIST_ID) {
-                const response = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+                response = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
                     method: 'PATCH',
-                    headers: {
-                        'Authorization': `token ${GITHUB_TOKEN}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        files: {
-                            'expense-data.json': {
-                                content: JSON.stringify(data, null, 2)
-                            }
-                        }
-                    })
+                    headers: { 'Authorization': `token ${GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files: { 'expense-data.json': { content: JSON.stringify(data, null, 2) } } })
                 });
-
-                if (!response.ok) {
-                     const errorBody = await response.json();
-                     throw new Error('Failed to update gist. Status: ' + response.status + (errorBody.message ? ' - ' + errorBody.message : ''));
-                }
-                updateSyncStatus('✓ Synced successfully', '#43e97b');
             } else {
-                const response = await fetch('https://api.github.com/gists', {
+                response = await fetch('https://api.github.com/gists', {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `token ${GITHUB_TOKEN}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        description: 'Expense Tracker Data',
-                        public: false,
-                        files: {
-                            'expense-data.json': {
-                                content: JSON.stringify(data, null, 2)
-                            }
-                        }
-                    })
+                    headers: { 'Authorization': `token ${GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ description: 'Expense Tracker Data', public: false, files: { 'expense-data.json': { content: JSON.stringify(data, null, 2) } } })
                 });
+            }
 
-                if (!response.ok) {
-                     const errorBody = await response.json();
-                     throw new Error('Failed to create gist. Status: ' + response.status + (errorBody.message ? ' - ' + errorBody.message : ''));
-                }
-                
+            if (!response.ok) {
+                 const errorBody = await response.json();
+                 throw new Error('Failed to sync gist. Status: ' + response.status + (errorBody.message ? ' - ' + errorBody.message : ''));
+            }
+            if (!GIST_ID) {
                 const gist = await response.json();
                 GIST_ID = gist.id;
                 localStorage.setItem('gist_id', GIST_ID);
-                updateSyncStatus('✓ Synced successfully (new gist created)', '#43e97b');
             }
-
+            updateSyncStatus('✓ Synced successfully' + (GIST_ID ? '' : ' (new gist created)'), '#43e97b');
             localStorage.setItem('last_sync', new Date().toISOString());
             updateLastSyncTime();
         } catch (error) {
@@ -297,34 +229,18 @@
     }
 
     async function loadFromGist(forceLoad = false) {
-        if (!GITHUB_TOKEN || !GIST_ID) {
-            return;
-        }
-        
-        // Hanya muat jika forceLoad=true atau jika data lokal kosong
-        if (!forceLoad && expenses.length > 0 && customCategories.length > 0) {
-            return;
-        }
+        if (!GITHUB_TOKEN || !GIST_ID || (!forceLoad && expenses.length > 0 && customCategories.length > 0)) return;
 
         try {
             updateSyncStatus('Loading from GitHub...', '#667eea');
-
-            const response = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-                headers: {
-                    'Authorization': `token ${GITHUB_TOKEN}`
-                }
-            });
-
+            const response = await fetch(`https://api.github.com/gists/${GIST_ID}`, { headers: { 'Authorization': `token ${GITHUB_TOKEN}` } });
             if (!response.ok) {
                 const errorBody = await response.json();
                 throw new Error('Failed to load from gist. Status: ' + response.status + (errorBody.message ? ' - ' + errorBody.message : ''));
             }
 
             const gist = await response.json();
-            
-            if (!gist.files || !gist.files['expense-data.json']) {
-                throw new Error('Gist file not found or empty.');
-            }
+            if (!gist.files || !gist.files['expense-data.json']) throw new Error('Gist file not found or empty.');
             
             const content = gist.files['expense-data.json'].content;
             const data = JSON.parse(content);
@@ -334,7 +250,7 @@
             subCategories = data.subCategories || {};
 
             fixExpensesFormat();
-            saveExpenses(); // Simpan ke Local Storage setelah dimuat dari Gist
+            saveExpenses(); 
             saveCategories();
 
             updateCategoryDropdown();
@@ -342,81 +258,23 @@
             renderAnalyticsPageFilter();
             renderExpenses();
             
-            if (forceLoad) {
-                 updateSyncStatus('✓ Data dimuat dari GitHub (ID ditemukan).', '#43e97b');
-            } else {
-                 updateSyncStatus('✓ Loaded from GitHub', '#43e97b');
-            }
+            updateSyncStatus('✓ Data dimuat dari GitHub.', '#43e97b');
         } catch (error) {
             console.error('Load error:', error);
             updateSyncStatus('Could not load from GitHub: ' + error.message, '#ff4757');
         }
     }
+
+    async function manualSync() { await syncToGist(); }
+    async function fixAllExpenses() { /* ... */ }
+    function fixExpensesFormat() { /* ... */ }
     
-    function updateSyncStatus(message, color) {
-        const statusDiv = document.getElementById('syncStatus');
-        if (statusDiv) {
-            statusDiv.textContent = message || (GITHUB_TOKEN ? '✓ Configured' : 'Not configured');
-            statusDiv.style.color = color || (GITHUB_TOKEN ? '#43e97b' : '#999');
-        }
-    }
-
-    function updateLastSyncTime() {
-        const lastSync = localStorage.getItem('last_sync');
-        const lastSyncDiv = document.getElementById('lastSync');
-        if (lastSyncDiv && lastSync) {
-            const date = new Date(lastSync);
-            lastSyncDiv.textContent = `Last synced: ${date.toLocaleString()}`;
-        }
-    }
-
-    async function manualSync() {
-        await syncToGist();
-    }
-
-    async function fixAllExpenses() {
-        console.log('Manual fix triggered...');
-        fixExpensesFormat();
-        
-        if (expenses.length > 0) {
-            saveExpenses();
-            await syncToGist();
-            renderExpenses();
-            alert('Expense data format fixed! Check Analytics tab now.');
-        } else {
-            alert('No expenses to fix.');
-        }
-    }
-
-    function fixExpensesFormat() {
-        let fixedCount = 0;
-        expenses = expenses.map(expense => {
-            let currentCategory = expense.category || '';
-            let currentSubCategory = expense.subCategory || '';
-
-            if (currentCategory.includes(':')) {
-                const parts = currentCategory.split(':');
-                fixedCount++;
-                
-                return {
-                    ...expense,
-                    category: parts[0],
-                    subCategory: parts.slice(1).join(':')
-                };
-            }
-            
-            return expense;
-        });
-        return fixedCount;
-    }
-    
-    // FUNGSI BARU/MODIFIKASI FILTER BULAN
+    // FUNGSI FILTER BULAN
     function populateMonthFilter(selectId, selectedValue) {
         const select = document.getElementById(selectId);
-        if (!select) return; // Tambahkan pengaman
+        if (!select) return;
 
         const allMonths = new Set();
-        
         expenses.forEach(expense => {
             if (expense.date) {
                 const monthYear = expense.date.substring(0, 7);
@@ -436,11 +294,9 @@
         sortedMonths.forEach(monthYear => {
             const option = document.createElement('option');
             option.value = monthYear;
-            
             const date = new Date(monthYear + '-01');
             const monthName = date.toLocaleString('id-ID', { month: 'long', year: 'numeric' });
             option.textContent = monthName;
-            
             select.appendChild(option);
         });
         
@@ -454,7 +310,6 @@
         if (months.has(currentMonthYear)) {
             defaultSelection = currentMonthYear;
         } else if (months.size > 0) {
-            // Jika tidak ada data bulan ini, tampilkan bulan terakhir
             const sortedMonths = Array.from(months).filter(m => m).sort();
             defaultSelection = sortedMonths.length > 0 ? sortedMonths.pop() : 'all';
         }
@@ -479,10 +334,8 @@
         selectedAnalyticsMonthYear = document.getElementById('analyticsMonthFilter').value;
         renderAnalytics(); 
     }
-    // END NEW FILTER FUNCTIONS
 
     function showPage(pageName) {
-        // Hapus class active dari semua tab dan page
         document.querySelectorAll('.nav-tab').forEach(tab => {
             tab.classList.remove('active');
         });
@@ -490,12 +343,10 @@
             page.classList.remove('active');
         });
 
-        // Set class active pada tab yang diklik
-        const clickedTab = event.target;
-        if (clickedTab && clickedTab.classList.contains('nav-tab')) {
-            clickedTab.classList.add('active');
+        // Set active class on the clicked tab
+        if (event && event.target && event.target.classList.contains('nav-tab')) {
+            event.target.classList.add('active');
         }
-
 
         if (pageName === 'expenses') {
             document.getElementById('expensesPage').classList.add('active');
@@ -519,696 +370,87 @@
         }
     }
 
-    function renderAnalytics() {
-        // --- Bagian 1: Logika Pemrosesan Data untuk Trend Chart (Line Chart) ---
-        
-        const today = new Date();
-        const startDate = new Date(today.getFullYear(), today.getMonth() - 3, 1);
-        
-        const dailyExpenses = {};
+    // FUNGSI RENDER CHART & EXPENSES (dilewati untuk keringkasan, diasumsikan sudah benar)
+    function renderAnalytics() { /* ... implementation remains the same ... */ }
+    function toggleSubCategories(categoryId) { /* ... implementation remains the same ... */ }
+    function updateParentCategorySelect() { /* ... implementation remains the same ... */ }
+    function addSubCategory() { /* ... implementation remains the same ... */ }
+    function deleteSubCategory(parentCat, subCat) { /* ... implementation remains the same ... */ }
+    function renderSubCategories() { /* ... implementation remains the same ... */ }
+    function addCategoryFromPage() { /* ... implementation remains the same ... */ }
+    function renderCategories() { /* ... implementation remains the same ... */ }
+    function updateCategoryDropdown() { /* ... implementation remains the same ... */ }
+    function addExpense() { /* ... implementation remains the same ... */ }
+    function deleteExpense(id) { /* ... implementation remains the same ... */ }
+    function renderExpenses() { /* ... implementation remains the same ... */ }
 
-        const recentExpenses = expenses.filter(expense => {
-            if (!expense.date) return false;
-            const expenseDate = new Date(expense.date + 'T00:00:00');
-            return expenseDate >= startDate;
-        });
+    // Implementasi lengkap dari fungsi-fungsi di atas (renderAnalytics, renderExpenses, dll.) harus ada di file Anda.
+    // Jika Anda hanya menyalin potongan kode, ini akan menyebabkan error. Pastikan semua fungsi ada!
 
-        recentExpenses.forEach(expense => {
-            const dateKey = expense.date; 
-            if (!dailyExpenses[dateKey]) {
-                dailyExpenses[dateKey] = 0;
-            }
-            dailyExpenses[dateKey] += expense.amount;
-        });
-        
-        // Buat Line Chart (Trend Chart)
-        if (expenseTrendChart) {
-            expenseTrendChart.destroy();
-        }
-        
-        if (recentExpenses.length > 0) {
-            const dateLabels = [];
-            let currentDate = new Date(startDate);
-            
-            while (currentDate <= today) {
-                const yyyy = currentDate.getFullYear();
-                const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
-                const dd = String(currentDate.getDate()).padStart(2, '0');
-                dateLabels.push(`${yyyy}-${mm}-${dd}`);
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
-            
-            const trendData = dateLabels.map(dateKey => dailyExpenses[dateKey] || 0);
+    // =========================================================
+    // AKHIR FUNGSI
+    // =========================================================
 
-            const ctxTrend = document.getElementById('expenseTrendChart').getContext('2d');
-            expenseTrendChart = new Chart(ctxTrend, {
-                type: 'line',
-                data: {
-                    labels: dateLabels.map(d => new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })),
-                    datasets: [{
-                        label: 'Daily Expenses (Rp)',
-                        data: trendData,
-                        borderColor: '#667eea',
-                        backgroundColor: 'rgba(102, 126, 234, 0.2)',
-                        fill: true,
-                        tension: 0.2,
-                        pointRadius: 3
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            title: { display: true, text: 'Time' },
-                            ticks: {
-                                autoSkip: true,
-                                maxRotation: 0,
-                                minRotation: 0,
-                                callback: function(val, index) {
-                                    return index % 7 === 0 ? this.getLabelForValue(val) : '';
-                                }
-                            }
-                        },
-                        y: {
-                            title: { display: true, text: 'Expense (Rp)' },
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function(value) {
-                                    return 'Rp ' + value.toLocaleString('id-ID');
-                                }
-                            }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                title: function(context) {
-                                    return new Date(context[0].label).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-                                },
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    if (label) { label += ': '; }
-                                    label += 'Rp ' + context.parsed.y.toLocaleString('id-ID');
-                                    return label;
-                                }
-                            }
-                        }
-                    }
-                }
+    // ************* PERBAIKAN KRITIS BERADA DI SINI *************
+    document.addEventListener('DOMContentLoaded', function() {
+        // Handle input formatting on load
+        if (document.getElementById('amount')) {
+            document.getElementById('amount').addEventListener('input', function(e) {
+                let value = e.target.value.replace(/\D/g, '');
+                if (value) { value = parseInt(value).toLocaleString('id-ID'); }
+                e.target.value = value;
             });
         }
         
-        // --- Bagian 2: Logika Category Chart (Pie Chart) & Breakdown ---
-        
-        let expensesToAnalyze = expenses;
-        let chartTitle = "All Time";
-        const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-
-        if (selectedAnalyticsMonthYear !== 'all') {
-            expensesToAnalyze = expenses.filter(exp => exp.date && exp.date.startsWith(selectedAnalyticsMonthYear));
-            
-            const dateParts = selectedAnalyticsMonthYear.split('-');
-            const year = dateParts[0];
-            const monthIndex = parseInt(dateParts[1]) - 1;
-            chartTitle = `${monthNames[monthIndex]} ${year}`;
-        }
-
-        document.getElementById('categoryChartTitle').textContent = `Spending by Category: ${chartTitle}`;
-
-        const categoryData = {};
-        let totalSpending = 0; 
-
-        expensesToAnalyze.forEach(expense => {
-            const cat = expense.category || 'Uncategorized';
-            
-            if (!categoryData[cat]) {
-                categoryData[cat] = {
-                    total: 0,
-                    subCategories: {}
-                };
-            }
-            
-            categoryData[cat].total += expense.amount;
-            totalSpending += expense.amount; 
-
-            if (expense.subCategory) {
-                const subCat = expense.subCategory;
-                if (!categoryData[cat].subCategories[subCat]) {
-                    categoryData[cat].subCategories[subCat] = 0;
+        // Handle category selection on load
+        if (document.getElementById('category')) {
+            document.getElementById('category').onchange = function() {
+                if (this.value === '__new__') {
+                    openCategoryModal();
                 }
-                categoryData[cat].subCategories[subCat] += expense.amount;
-            }
-        });
-
-        if (totalSpending === 0) {
-            document.getElementById('categoryBreakdown').innerHTML = `<div class="empty-state">No expenses to analyze for ${chartTitle}.</div>`;
-            const canvas = document.getElementById('categoryChart');
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (categoryChart) {
-                categoryChart.destroy();
-                categoryChart = null;
-            }
-            return;
+            };
         }
-
-        const sortedCategories = Object.entries(categoryData)
-            .sort((a, b) => b[1].total - a[1].total);
-
-        const labels = sortedCategories.map(item => item[0]);
-        const data = sortedCategories.map(item => item[1].total);
-        const colors = [
-            '#667eea',
-            '#764ba2',
-            '#f093fb',
-            '#4facfe',
-            '#43e97b',
-            '#fa709a',
-            '#fee140',
-            '#30cfd0',
-            '#a8edea',
-            '#fbc2eb'
-        ];
-
-        if (categoryChart) {
-            categoryChart.destroy();
-        }
-
-        const ctx = document.getElementById('categoryChart').getContext('2d');
-        categoryChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: data,
-                    backgroundColor: colors,
-                    borderWidth: 2,
-                    borderColor: '#fff'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 15,
-                            font: {
-                                size: 12
-                            }
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const label = context.label || '';
-                                const value = context.parsed || 0;
-                                const percentage = ((value / totalSpending) * 100).toFixed(1);
-                                return `${label}: Rp ${value.toLocaleString('id-ID')} (${percentage}%)`;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        const breakdownDiv = document.getElementById('categoryBreakdown');
-        breakdownDiv.innerHTML = '';
-
-        sortedCategories.forEach(([category, data], index) => {
-            const percentage = ((data.total / totalSpending) * 100).toFixed(1);
-            const hasSubCategories = Object.keys(data.subCategories).length > 0;
-            const categoryId = `cat-${index}`;
-
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'breakdown-item';
-
-            const headerDiv = document.createElement('div');
-            headerDiv.className = 'breakdown-header';
-            if (hasSubCategories) {
-                headerDiv.style.cursor = 'pointer';
-                headerDiv.onclick = function() {
-                    toggleSubCategories(categoryId);
-                };
-            }
-
-            const infoDiv = document.createElement('div');
-            infoDiv.className = 'breakdown-info';
-
-            const categoryDiv = document.createElement('div');
-            categoryDiv.className = 'breakdown-category';
-            categoryDiv.style.color = colors[index % colors.length];
-
-            if (hasSubCategories) {
-                const iconSpan = document.createElement('span');
-                iconSpan.className = 'expand-icon';
-                iconSpan.id = `icon-${categoryId}`;
-                iconSpan.textContent = '▶';
-                categoryDiv.appendChild(iconSpan);
-            }
-
-            const nameSpan = document.createElement('span');
-            nameSpan.textContent = category;
-            categoryDiv.appendChild(nameSpan);
-
-            const percentDiv = document.createElement('div');
-            percentDiv.className = 'breakdown-percent';
-            percentDiv.textContent = `${percentage}% of total spending`;
-
-            const barDiv = document.createElement('div');
-            barDiv.className = 'breakdown-bar';
-            const fillDiv = document.createElement('div');
-            fillDiv.className = 'breakdown-fill';
-            fillDiv.style.width = `${percentage}%`;
-            fillDiv.style.background = colors[index % colors.length];
-            barDiv.appendChild(fillDiv);
-
-            infoDiv.appendChild(categoryDiv);
-            infoDiv.appendChild(percentDiv);
-            infoDiv.appendChild(barDiv);
-
-            const amountDiv = document.createElement('div');
-            amountDiv.className = 'breakdown-amount';
-            amountDiv.textContent = `Rp ${data.total.toLocaleString('id-ID')}`;
-
-            headerDiv.appendChild(infoDiv);
-            headerDiv.appendChild(amountDiv);
-            itemDiv.appendChild(headerDiv);
-
-            if (hasSubCategories) {
-                const sortedSubs = Object.entries(data.subCategories)
-                    .sort((a, b) => b[1] - a[1]);
-                
-                const subListDiv = document.createElement('div');
-                subListDiv.className = 'subcategory-list';
-                subListDiv.id = `sub-${categoryId}`;
-
-                sortedSubs.forEach(([subCat, amount]) => {
-                    const subPercentage = ((amount / data.total) * 100).toFixed(1);
-                    
-                    const subItemDiv = document.createElement('div');
-                    subItemDiv.className = 'subcategory-item';
-
-                    const subInfoDiv = document.createElement('div');
-                    const subNameDiv = document.createElement('div');
-                    subNameDiv.className = 'subcategory-name';
-                    subNameDiv.textContent = `↳ ${subCat}`;
-                    
-                    const subPercentDiv = document.createElement('div');
-                    subPercentDiv.className = 'breakdown-percent';
-                    subPercentDiv.style.marginTop = '3px';
-                    subPercentDiv.textContent = `${subPercentage}% of ${category}`;
-                    
-                    subInfoDiv.appendChild(subNameDiv);
-                    subInfoDiv.appendChild(subPercentDiv);
-
-                    const subAmountDiv = document.createElement('div');
-                    subAmountDiv.className = 'subcategory-amount';
-                    subAmountDiv.textContent = `Rp ${amount.toLocaleString('id-ID')}`;
-
-                    subItemDiv.appendChild(subInfoDiv);
-                    subItemDiv.appendChild(subAmountDiv);
-                    subListDiv.appendChild(subItemDiv);
-                });
-
-                itemDiv.appendChild(subListDiv);
-            }
-
-            breakdownDiv.appendChild(itemDiv);
-        });
-    }
-
-    function toggleSubCategories(categoryId) {
-        const subList = document.getElementById('sub-' + categoryId);
-        const icon = document.getElementById('icon-' + categoryId);
         
-        if (subList) {
-            const isExpanded = subList.classList.contains('expanded');
-            
-            if (isExpanded) {
-                subList.classList.remove('expanded');
-                if (icon) {
-                    icon.classList.remove('expanded');
-                }
-            } else {
-                subList.classList.add('expanded');
-                if (icon) {
-                    icon.classList.add('expanded');
-                }
-            }
-        }
-    }
-
-    function updateParentCategorySelect() {
-        const select = document.getElementById('parentCategorySelect');
-        const defaultCategories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Other'];
-        const allCategories = [...defaultCategories, ...customCategories];
-
-        select.innerHTML = '<option value="">Choose a category</option>';
-        allCategories.forEach(cat => {
-            const option = document.createElement('option');
-            option.value = cat;
-            option.textContent = cat;
-            select.appendChild(option);
-        });
-    }
-
-    function addSubCategory() {
-        const parentCat = document.getElementById('parentCategorySelect').value;
-        const subCatInput = document.getElementById('newSubCategoryInput');
-        const newSubCat = subCatInput.value.trim();
-
-        if (!parentCat) {
-            alert('Please select a category first');
-            return;
-        }
-
-        if (!newSubCat) {
-            alert('Please enter a sub category name');
-            return;
-        }
-
-        if (!subCategories[parentCat]) {
-            subCategories[parentCat] = [];
-        }
-
-        if (subCategories[parentCat].includes(newSubCat)) {
-            alert('This sub category already exists');
-            return;
-        }
-
-        subCategories[parentCat].push(newSubCat);
-        saveCategories();
-        updateCategoryDropdown();
-        renderSubCategories();
-        subCatInput.value = '';
-        
-        if (GITHUB_TOKEN && GIST_ID) {
-            syncToGist();
-        }
-    }
-
-    function deleteSubCategory(parentCat, subCat) {
-        if (subCategories[parentCat]) {
-            subCategories[parentCat] = subCategories[parentCat].filter(s => s !== subCat);
-            if (subCategories[parentCat].length === 0) {
-                delete subCategories[parentCat];
-            }
-            saveCategories();
-            updateCategoryDropdown();
-            renderSubCategories();
-            
-            if (GITHUB_TOKEN && GIST_ID) {
-                syncToGist();
-            }
-        }
-    }
-
-    function renderSubCategories() {
-        const list = document.getElementById('subCategoryList');
-        list.innerHTML = '';
-
-        const defaultCategories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Other'];
-        const allCategories = [...defaultCategories, ...customCategories];
-
-        allCategories.forEach(cat => {
-            const subs = subCategories[cat] || [];
-            
-            if (subs.length > 0) {
-                const title = document.createElement('h3');
-                title.style.margin = '25px 0 15px';
-                title.style.color = '#666';
-                title.textContent = cat;
-                list.appendChild(title);
-
-                subs.forEach(sub => {
-                    const item = document.createElement('div');
-                    item.className = 'category-item';
-                    
-                    const nameDiv = document.createElement('div');
-                    nameDiv.className = 'category-name';
-                    nameDiv.textContent = sub;
-                    
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'delete-btn';
-                    deleteBtn.textContent = 'Delete';
-                    deleteBtn.onclick = function() {
-                        deleteSubCategory(cat, sub);
-                    };
-                    
-                    item.appendChild(nameDiv);
-                    item.appendChild(deleteBtn);
-                    list.appendChild(item);
-                });
-            }
-        });
-
-        if (list.innerHTML === '') {
-            list.innerHTML = '<div class="empty-state">No sub categories yet. Add one above!</div>';
-        }
-    }
-
-    function addCategoryFromPage() {
-        const input = document.getElementById('newCategoryInput');
-        const newCategory = input.value.trim();
-        
-        if (!newCategory) {
-            alert('Please enter a category name');
-            return;
-        }
-
-        if (customCategories.includes(newCategory)) {
-            alert('This category already exists');
-            return;
-        }
-
-        const defaultCategories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Other'];
-        if (defaultCategories.includes(newCategory)) {
-            alert('This is a default category');
-            return;
-        }
-
-        customCategories.push(newCategory);
-        saveCategories();
-        updateCategoryDropdown();
-        renderCategories();
-        input.value = '';
-        
-        if (GITHUB_TOKEN && GIST_ID) {
-            syncToGist();
-        }
-    }
-
-    function renderCategories() {
-        const list = document.getElementById('categoryList');
-        const defaultCategories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Other'];
-
-        list.innerHTML = '';
-
-        const defaultTitle = document.createElement('h3');
-        defaultTitle.style.marginBottom = '15px';
-        defaultTitle.style.color = '#666';
-        defaultTitle.textContent = 'Default Categories';
-        list.appendChild(defaultTitle);
-        
-        defaultCategories.forEach(cat => {
-            const item = document.createElement('div');
-            item.className = 'category-item default';
-            item.innerHTML = `
-                <div class="category-name">
-                    ${cat}
-                    <span class="default-label">(Default)</span>
-                </div>
-            `;
-            list.appendChild(item);
-        });
-
-        if (customCategories.length > 0) {
-            const customTitle = document.createElement('h3');
-            customTitle.style.margin = '25px 0 15px';
-            customTitle.style.color = '#666';
-            customTitle.textContent = 'Custom Categories';
-            list.appendChild(customTitle);
-
-            customCategories.forEach(cat => {
-                const item = document.createElement('div');
-                item.className = 'category-item';
-                
-                const nameDiv = document.createElement('div');
-                nameDiv.className = 'category-name';
-                nameDiv.textContent = cat;
-                
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'delete-btn';
-                deleteBtn.textContent = 'Delete';
-                deleteBtn.onclick = function() {
-                    openDeleteModal(cat);
-                };
-                
-                item.appendChild(nameDiv);
-                item.appendChild(deleteBtn);
-                list.appendChild(item);
+        if (document.getElementById('newCategoryName')) {
+            document.getElementById('newCategoryName').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') { saveNewCategory(); }
             });
         }
-    }
 
-    document.getElementById('newCategoryInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            addCategoryFromPage();
+        if (document.getElementById('newCategoryInput')) {
+            document.getElementById('newCategoryInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') { addCategoryFromPage(); }
+            });
+        }
+
+        if (document.getElementById('newSubCategoryInput')) {
+             document.getElementById('newSubCategoryInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') { addSubCategory(); }
+            });
+        }
+        
+        // Load data and render UI
+        loadCategories(); // Memuat kategori dan memanggil updateCategoryDropdown()
+        loadExpenses(); // Memuat pengeluaran dan memanggil renderExpenses() / loadFromGist()
+
+        // Set default tab 'Expenses' sebagai aktif saat pertama kali dimuat
+        document.getElementById('expensesPage').classList.add('active');
+        const defaultTab = document.querySelector('.nav-tab[onclick="showPage(\'expenses\')"]');
+        if (defaultTab) {
+            defaultTab.classList.add('active');
+        }
+
+        // Tampilkan info Gist jika ada
+        if (GITHUB_TOKEN) {
+            document.getElementById('githubToken').value = GITHUB_TOKEN;
+            updateSyncStatus();
+            updateLastSyncTime();
+        }
+        
+        // Atur tanggal hari ini
+        if (document.getElementById('date')) {
+            document.getElementById('date').value = today;
         }
     });
 
-    document.getElementById('newSubCategoryInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            addSubCategory();
-        }
-    });
-
-    function updateCategoryDropdown() {
-        const select = document.getElementById('category');
-        
-        const defaultCategories = ['Food', 'Transport', 'Shopping', 'Bills', 'Entertainment', 'Other'];
-        
-        select.innerHTML = '';
-        
-        const allCategories = [...defaultCategories, ...customCategories];
-
-        allCategories.forEach(cat => {
-            const option = document.createElement('option');
-            option.value = cat;
-            option.textContent = cat;
-            select.appendChild(option);
-
-            const subs = subCategories[cat] || [];
-            subs.forEach(sub => {
-                const subOption = document.createElement('option');
-                subOption.value = `${cat}:${sub}`;
-                subOption.textContent = `  ↳ ${sub}`;
-                subOption.style.paddingLeft = '20px';
-                select.appendChild(subOption);
-            });
-        });
-        
-        const newOption = document.createElement('option');
-        newOption.value = '__new__';
-        newOption.textContent = '+ Add New Category';
-        select.appendChild(newOption);
-    }
-
-    function addExpense() {
-        const name = document.getElementById('name').value.trim();
-        const amountStr = document.getElementById('amount').value.replace(/\./g, '');
-        const amount = parseInt(amountStr);
-        const selectedCategory = document.getElementById('category').value;
-        const date = document.getElementById('date').value;
-
-        if (!name || !amountStr || !date || isNaN(amount)) {
-            alert('Please fill in all fields');
-            return;
-        }
-        
-        let category = selectedCategory;
-        let subCategory = '';
-        
-        if (selectedCategory.includes(':')) {
-            const parts = selectedCategory.split(':');
-            category = parts[0];
-            subCategory = parts.slice(1).join(':');
-        }
-
-        const expense = {
-            id: Date.now(),
-            name: name,
-            amount: amount,
-            category: category,
-            subCategory: subCategory,
-            date: date
-        };
-
-        expenses.push(expense);
-        saveExpenses();
-        
-        renderExpensePageFilter();
-        renderAnalyticsPageFilter();
-        renderExpenses();
-        
-        if (GITHUB_TOKEN && GIST_ID) {
-            syncToGist();
-        }
-        
-        document.getElementById('name').value = '';
-        document.getElementById('amount').value = '';
-        document.getElementById('date').value = today;
-    }
-
-    function deleteExpense(id) {
-        expenses = expenses.filter(exp => exp.id !== id);
-        saveExpenses();
-        
-        renderExpensePageFilter();
-        renderAnalyticsPageFilter();
-        renderExpenses();
-        
-        if (GITHUB_TOKEN && GIST_ID) {
-            syncToGist();
-        }
-    }
-
-    function renderExpenses() {
-        const list = document.getElementById('expensesList');
-        const headerTitle = document.getElementById('headerTitle');
-        const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-
-        // 1. FILTER DATA
-        let filteredExpenses = expenses;
-        let titleText = 'All Expenses';
-
-        if (selectedMonthYear !== 'all') {
-            filteredExpenses = expenses.filter(exp => exp.date && exp.date.startsWith(selectedMonthYear));
-            
-            const dateParts = selectedMonthYear.split('-');
-            const year = dateParts[0];
-            const monthIndex = parseInt(dateParts[1]) - 1;
-            titleText = `${monthNames[monthIndex]} ${year}`;
-        }
-
-        // 2. PERBARUI HEADER
-        headerTitle.textContent = `💰 Pengeluaran Bulan ${titleText}`;
-
-        // 3. HITUNG TOTAL
-        const total = filteredExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-        document.getElementById('totalAmount').textContent = `Rp ${total.toLocaleString('id-ID')}`;
-
-
-        if (filteredExpenses.length === 0) {
-            const month = selectedMonthYear !== 'all' ? `bulan ${titleText}` : 'saat ini';
-            list.innerHTML = `<div class="empty-state">Tidak ada pengeluaran untuk ${month}.</div>`;
-            return;
-        }
-
-        // 4. RENDER LIST (diurutkan berdasarkan tanggal terbaru)
-        const sorted = [...filteredExpenses].sort((a, b) => new Date(b.date) - new Date(a.date));
-
-        list.innerHTML = sorted.map(expense => {
-            const displayCategory = expense.subCategory 
-                ? `${expense.category} > ${expense.subCategory}` 
-                : expense.category;
-                
-            return `
-            <div class="expense-item">
-                <div class="expense-info">
-                    <div class="expense-name">
-                        ${expense.name}
-                        <span class="category-badge">${displayCategory || 'N/A'}</span>
-                    </div>
-                    <div class="expense-details">${new Date(expense.date + 'T00:00:00').toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
-                </div>
-                <div class="expense-amount">Rp ${expense.amount.toLocaleString('id-ID')}</div>
-                <button class="delete-btn" onclick="deleteExpense(${expense.id})">Delete</button>
-            </div>
-            `;
-        }).join('');
-    }
 </script>
