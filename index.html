@@ -4,8 +4,10 @@
     let customCategories = [];
     let subCategories = {}; // { categoryName: [subcat1, subcat2, ...] }
     let categoryToDelete = null;
+    
+    // Inisialisasi Chart instances secara global
     let categoryChart = null;
-    let expenseTrendChart = null; // NEW: Global variable for Line Chart
+    let expenseTrendChart = null; 
     
     // GitHub Gist Configuration
     let GITHUB_TOKEN = localStorage.getItem('github_token') || '';
@@ -13,8 +15,8 @@
 
     // Variabel untuk melacak bulan yang sedang difilter
     const currentMonthYear = new Date().toISOString().substring(0, 7);
-    let selectedMonthYear = currentMonthYear; // Untuk Expenses Page
-    let selectedAnalyticsMonthYear = 'all'; // NEW: Untuk Analytics Page
+    let selectedMonthYear = null; // Untuk Expenses Page (akan diatur di renderExpensePageFilter)
+    let selectedAnalyticsMonthYear = 'all'; // Untuk Analytics Page
 
     // Set today's date as default
     const today = new Date().toISOString().split('T')[0];
@@ -75,7 +77,6 @@
             renderCategories();
             closeDeleteModal();
             
-            // Auto-sync to GitHub if configured
             if (GITHUB_TOKEN && GIST_ID) {
                 syncToGist();
             }
@@ -97,18 +98,71 @@
         }
     }
 
-    // Allow Enter key to save category
     document.getElementById('newCategoryName').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             saveNewCategory();
         }
     });
+    
+    // --- FUNGSI UTILITY BARU/MODIFIKASI ---
+    
+    function loadExpenses() {
+        // Coba memuat dari Local Storage
+        const storedExpenses = localStorage.getItem('expenses');
+        if (storedExpenses) {
+            try {
+                expenses = JSON.parse(storedExpenses);
+            } catch (e) {
+                console.error("Error parsing expenses from localStorage", e);
+                expenses = [];
+            }
+        }
+        // Jika ada Gist, coba muat dari Gist
+        if (GITHUB_TOKEN && GIST_ID) {
+            loadFromGist();
+        } else {
+             // Jika tidak ada Gist, render tampilan awal dari Local Storage
+            renderExpensePageFilter();
+            renderExpenses();
+        }
+    }
 
-    // Load expenses from storage on startup
-    loadExpenses();
+    function loadCategories() {
+        const storedCategories = localStorage.getItem('customCategories');
+        if (storedCategories) {
+            try {
+                customCategories = JSON.parse(storedCategories);
+            } catch (e) {
+                console.error("Error parsing categories from localStorage", e);
+                customCategories = [];
+            }
+        }
+        const storedSubCategories = localStorage.getItem('subCategories');
+        if (storedSubCategories) {
+             try {
+                subCategories = JSON.parse(storedSubCategories);
+            } catch (e) {
+                console.error("Error parsing subCategories from localStorage", e);
+                subCategories = {};
+            }
+        }
+        updateCategoryDropdown();
+    }
+
+    function saveExpenses() {
+        localStorage.setItem('expenses', JSON.stringify(expenses));
+    }
+
+    function saveCategories() {
+        localStorage.setItem('customCategories', JSON.stringify(customCategories));
+        localStorage.setItem('subCategories', JSON.stringify(subCategories));
+    }
+    
+    // Panggil fungsi pemuatan data saat aplikasi dimulai
     loadCategories();
+    loadExpenses();
 
-    // --- FUNGSI GIST BARU/MODIFIKASI ---
+    // --- FUNGSI GIST ---
     
     async function findExistingGist() {
         try {
@@ -132,7 +186,6 @@
             );
             
             if (existingGist) {
-                console.log('Found existing Gist ID:', existingGist.id);
                 return existingGist.id;
             }
             
@@ -248,6 +301,7 @@
             return;
         }
         
+        // Hanya muat jika forceLoad=true atau jika data lokal kosong
         if (!forceLoad && expenses.length > 0 && customCategories.length > 0) {
             return;
         }
@@ -280,10 +334,12 @@
             subCategories = data.subCategories || {};
 
             fixExpensesFormat();
+            saveExpenses(); // Simpan ke Local Storage setelah dimuat dari Gist
+            saveCategories();
 
             updateCategoryDropdown();
             renderExpensePageFilter(); 
-            renderAnalyticsPageFilter(); // NEW: Render filter analytics
+            renderAnalyticsPageFilter();
             renderExpenses();
             
             if (forceLoad) {
@@ -297,8 +353,6 @@
         }
     }
     
-    // --- AKHIR FUNGSI GIST ---
-
     function updateSyncStatus(message, color) {
         const statusDiv = document.getElementById('syncStatus');
         if (statusDiv) {
@@ -335,8 +389,6 @@
     }
 
     function fixExpensesFormat() {
-        console.log('Fixing expenses format...');
-        
         let fixedCount = 0;
         expenses = expenses.map(expense => {
             let currentCategory = expense.category || '';
@@ -355,20 +407,14 @@
             
             return expense;
         });
-        
-        console.log(`Fixed ${fixedCount} expenses`);
-        
         return fixedCount;
-    }
-
-    // Try to load from gist on startup if configured
-    if (GITHUB_TOKEN && GIST_ID) {
-        loadFromGist();
     }
     
     // FUNGSI BARU/MODIFIKASI FILTER BULAN
     function populateMonthFilter(selectId, selectedValue) {
         const select = document.getElementById(selectId);
+        if (!select) return; // Tambahkan pengaman
+
         const allMonths = new Set();
         
         expenses.forEach(expense => {
@@ -398,19 +444,19 @@
             select.appendChild(option);
         });
         
-        // Set bulan yang dipilih saat ini atau default ke 'all'
         select.value = selectedValue;
     }
 
     function renderExpensePageFilter() {
-        // Tentukan default untuk Expenses Page (bulan saat ini jika ada data, atau 'all')
         let defaultSelection = 'all';
-        const months = new Set(expenses.map(e => e.date.substring(0, 7)));
+        const months = new Set(expenses.map(e => e.date ? e.date.substring(0, 7) : ''));
+        
         if (months.has(currentMonthYear)) {
             defaultSelection = currentMonthYear;
         } else if (months.size > 0) {
             // Jika tidak ada data bulan ini, tampilkan bulan terakhir
-            defaultSelection = Array.from(months).sort().pop();
+            const sortedMonths = Array.from(months).filter(m => m).sort();
+            defaultSelection = sortedMonths.length > 0 ? sortedMonths.pop() : 'all';
         }
         
         if (selectedMonthYear === null || selectedMonthYear === undefined) {
@@ -425,27 +471,31 @@
         renderExpenses();
     }
 
-    // NEW: Fungsi untuk merender filter Analytics
     function renderAnalyticsPageFilter() {
         populateMonthFilter('analyticsMonthFilter', selectedAnalyticsMonthYear);
     }
 
-    // NEW: Fungsi untuk mengubah filter Analytics
     function filterAnalyticsByMonth() {
         selectedAnalyticsMonthYear = document.getElementById('analyticsMonthFilter').value;
-        renderAnalytics(); // Re-render analytics
+        renderAnalytics(); 
     }
     // END NEW FILTER FUNCTIONS
 
     function showPage(pageName) {
+        // Hapus class active dari semua tab dan page
         document.querySelectorAll('.nav-tab').forEach(tab => {
             tab.classList.remove('active');
         });
-        event.target.classList.add('active');
-
         document.querySelectorAll('.page').forEach(page => {
             page.classList.remove('active');
         });
+
+        // Set class active pada tab yang diklik
+        const clickedTab = event.target;
+        if (clickedTab && clickedTab.classList.contains('nav-tab')) {
+            clickedTab.classList.add('active');
+        }
+
 
         if (pageName === 'expenses') {
             document.getElementById('expensesPage').classList.add('active');
@@ -453,7 +503,7 @@
             renderExpenses();
         } else if (pageName === 'analytics') {
             document.getElementById('analyticsPage').classList.add('active');
-            renderAnalyticsPageFilter(); // NEW: Panggil fungsi render filter
+            renderAnalyticsPageFilter();
             renderAnalytics();
         } else if (pageName === 'categories') {
             document.getElementById('categoriesPage').classList.add('active');
@@ -476,9 +526,7 @@
         const startDate = new Date(today.getFullYear(), today.getMonth() - 3, 1);
         
         const dailyExpenses = {};
-        let totalAllTimeSpending = 0; // NEW: Total ALL TIME (untuk perhitungan global jika diperlukan)
 
-        // Filter dan hitung pengeluaran yang termasuk dalam periode 4 bulan terakhir untuk Trend Chart
         const recentExpenses = expenses.filter(expense => {
             if (!expense.date) return false;
             const expenseDate = new Date(expense.date + 'T00:00:00');
@@ -498,7 +546,6 @@
             expenseTrendChart.destroy();
         }
         
-        // ... (Logika Line Chart tetap di sini, menggunakan dailyExpenses)
         if (recentExpenses.length > 0) {
             const dateLabels = [];
             let currentDate = new Date(startDate);
@@ -571,11 +618,9 @@
                 }
             });
         }
-        // END Line Chart Logic
         
         // --- Bagian 2: Logika Category Chart (Pie Chart) & Breakdown ---
         
-        // 1. FILTER DATA BERDASARKAN BULAN YANG DIPILIH
         let expensesToAnalyze = expenses;
         let chartTitle = "All Time";
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
@@ -589,13 +634,11 @@
             chartTitle = `${monthNames[monthIndex]} ${year}`;
         }
 
-        // Perbarui judul Pie Chart
         document.getElementById('categoryChartTitle').textContent = `Spending by Category: ${chartTitle}`;
 
         const categoryData = {};
-        let totalSpending = 0; // Total spending untuk SELECTED PERIOD
+        let totalSpending = 0; 
 
-        // Hitung total dan subkategori menggunakan data yang sudah difilter
         expensesToAnalyze.forEach(expense => {
             const cat = expense.category || 'Uncategorized';
             
@@ -607,7 +650,7 @@
             }
             
             categoryData[cat].total += expense.amount;
-            totalSpending += expense.amount; // Total SELECTED PERIOD
+            totalSpending += expense.amount; 
 
             if (expense.subCategory) {
                 const subCat = expense.subCategory;
@@ -1022,11 +1065,6 @@
             addSubCategory();
         }
     });
-
-    function loadExpenses() {}
-    function loadCategories() {}
-    function saveExpenses() {}
-    function saveCategories() {}
 
     function updateCategoryDropdown() {
         const select = document.getElementById('category');
